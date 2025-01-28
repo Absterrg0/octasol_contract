@@ -1,4 +1,6 @@
 use anchor_lang::prelude::*;
+use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
+use anchor_spl::associated_token::AssociatedToken;
 
 declare_id!("tMf5EmV2h6sMJ2QMFU6766ACJpf7NTuamPzCudaNFus");
 
@@ -6,14 +8,72 @@ declare_id!("tMf5EmV2h6sMJ2QMFU6766ACJpf7NTuamPzCudaNFus");
 pub mod octasol_contract {
     use super::*;
 
-    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
-        msg!("Greetings from: {:?}", ctx.program_id);
+    pub fn initialize_bounty(
+        ctx: Context<InitializeBounty>,
+        bounty_id: u64,
+        amount: u64,
+        github_issue_id: u64,
+        maintainer_github_id: u64,
+    ) -> Result<()> {
+        let bounty = &mut ctx.accounts.bounty;
+        bounty.maintainer = ctx.accounts.maintainer.key();
+        bounty.amount = amount;
+        bounty.github_issue_id = github_issue_id;
+        bounty.maintainer_github_id = maintainer_github_id;
+        bounty.state = BountyState::Created;
+        bounty.bounty_id = bounty_id;
+
+        // Transfer tokens from maintainer to escrow account
+        let transfer_instruction = Transfer {
+            from: ctx.accounts.maintainer_token_account.to_account_info(),
+            to: ctx.accounts.escrow_token_account.to_account_info(),
+            authority: ctx.accounts.maintainer.to_account_info(),
+        };
+
+        token::transfer(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                transfer_instruction,
+            ),
+            amount,
+        )?;
+
         Ok(())
     }
 }
 
 #[derive(Accounts)]
-pub struct Initialize {}
+#[instruction(bounty_id: u64)]
+pub struct InitializeBounty<'info> {
+    #[account(
+        init,
+        payer = maintainer,
+        space = Bounty::LEN,
+        seeds = [b"bounty".as_ref(), bounty_id.to_le_bytes().as_ref()],
+        bump
+    )]
+    pub bounty: Account<'info, Bounty>,
+
+    #[account(mut)]
+    pub maintainer: Signer<'info>,
+
+    #[account(mut)]
+    pub maintainer_token_account: Account<'info, TokenAccount>,
+
+    #[account(
+        init,
+        payer = maintainer,
+        associated_token::mint = mint,
+        associated_token::authority = bounty,
+    )]
+    pub escrow_token_account: Account<'info, TokenAccount>,
+
+    pub mint: Account<'info, Mint>,
+    pub system_program: Program<'info, System>,
+    pub token_program: Program<'info, Token>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub rent: Sysvar<'info, Rent>,
+}
 
 #[account]
 pub struct Bounty {
