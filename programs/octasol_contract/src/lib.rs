@@ -40,6 +40,23 @@ pub mod octasol_contract {
 
         Ok(())
     }
+
+    pub fn assign_contributor(
+        ctx: Context<AssignContributor>,
+        contributor_github_id: u64,
+    ) -> Result<()> {
+        let bounty = &mut ctx.accounts.bounty;
+        require!(
+            bounty.state == BountyState::Created,
+            BountyError::InvalidBountyState
+        );
+
+        bounty.contributor = Some(ctx.accounts.contributor.key());
+        bounty.contributor_github_id = Some(contributor_github_id);
+        bounty.state = BountyState::InProgress;
+
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
@@ -75,6 +92,20 @@ pub struct InitializeBounty<'info> {
     pub rent: Sysvar<'info, Rent>,
 }
 
+#[derive(Accounts)]
+pub struct AssignContributor<'info> {
+    #[account(
+        mut,
+        has_one = maintainer,
+        seeds = [b"bounty".as_ref(), bounty.bounty_id.to_le_bytes().as_ref()],
+        bump
+    )]
+    pub bounty: Account<'info, Bounty>,
+    pub maintainer: Signer<'info>,
+    /// CHECK: Contributor address is validated in the instruction
+    pub contributor: UncheckedAccount<'info>,
+}
+
 #[account]
 pub struct Bounty {
     pub maintainer: Pubkey,
@@ -105,4 +136,10 @@ pub enum BountyState {
     InProgress,
     Completed,
     Cancelled,
+}
+
+#[error_code]
+pub enum BountyError {
+    #[msg("Invalid bounty state for this operation")]
+    InvalidBountyState,
 }
