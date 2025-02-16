@@ -106,7 +106,11 @@ pub struct InitializeBounty<'info> {
     #[account(mut)]
     pub maintainer: Signer<'info>,
 
-    #[account(mut)]
+    #[account(
+        mut,
+        associated_token::mint = mint,
+        associated_token::authority = maintainer,
+    )]
     pub maintainer_token_account: Account<'info, TokenAccount>,
 
     #[account(
