@@ -1,8 +1,19 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
-use anchor_spl::associated_token::AssociatedToken;
+use anchor_spl::token::{self, Transfer};
+
+mod state;
+mod context;
+use context::*;
+use state::*;
+mod util;
+use util::{errors::BountyError, events::*};
+
+
 
 declare_id!("tMf5EmV2h6sMJ2QMFU6766ACJpf7NTuamPzCudaNFus");
+
+
+
 
 #[program]
 pub mod octasol_contract {
@@ -15,6 +26,15 @@ pub mod octasol_contract {
         github_issue_id: u64,
         maintainer_github_id: u64,
     ) -> Result<()> {
+        // Enhanced Validation
+        require!(amount > 0, BountyError::ZeroAmount);
+        
+        // Economic controls - minimum bounty amount (1000 tokens minimum)
+        const MIN_BOUNTY_AMOUNT: u64 = 1000;
+        require!(amount >= MIN_BOUNTY_AMOUNT, BountyError::InsufficientAmount);
+        
+        let clock = Clock::get()?;
+        
         let bounty = &mut ctx.accounts.bounty;
         bounty.maintainer = ctx.accounts.maintainer.key();
         bounty.amount = amount;
@@ -22,8 +42,8 @@ pub mod octasol_contract {
         bounty.maintainer_github_id = maintainer_github_id;
         bounty.state = BountyState::Created;
         bounty.bounty_id = bounty_id;
+        bounty.created_at = clock.unix_timestamp;
 
-        // Transfer tokens from maintainer to escrow account
         let transfer_instruction = Transfer {
             from: ctx.accounts.maintainer_token_account.to_account_info(),
             to: ctx.accounts.escrow_token_account.to_account_info(),
@@ -38,9 +58,18 @@ pub mod octasol_contract {
             amount,
         )?;
 
+        // Emit event
+        emit!(BountyCreated {
+            bounty_id,
+            maintainer: ctx.accounts.maintainer.key(),
+            amount,
+            github_issue_id,
+        });
+
         Ok(())
     }
 
+    // Maintainer assigns contributor
     pub fn assign_contributor(
         ctx: Context<AssignContributor>,
         contributor_github_id: u64,
@@ -51,13 +80,27 @@ pub mod octasol_contract {
             BountyError::InvalidBountyState
         );
 
+        // Prevent assigning if already has a contributor
+        require!(
+            bounty.contributor.is_none(),
+            BountyError::ContributorAlreadyAssigned
+        );
+
         bounty.contributor = Some(ctx.accounts.contributor.key());
         bounty.contributor_github_id = Some(contributor_github_id);
         bounty.state = BountyState::InProgress;
 
+        // Emit event
+        emit!(ContributorAssigned {
+            bounty_id: bounty.bounty_id,
+            contributor: ctx.accounts.contributor.key(),
+            contributor_github_id,
+        });
+
         Ok(())
     }
 
+    // Maintainer completes bounty and pays contributor
     pub fn complete_bounty(ctx: Context<CompleteBounty>) -> Result<()> {
         let bounty = &mut ctx.accounts.bounty;
         require!(
@@ -87,13 +130,23 @@ pub mod octasol_contract {
 
         bounty.state = BountyState::Completed;
 
+        // Emit event
+        emit!(BountyCompleted {
+            bounty_id: bounty.bounty_id,
+            contributor: ctx.accounts.contributor.key(),
+            amount: bounty.amount,
+        });
+
         Ok(())
     }
 
     pub fn cancel_bounty(ctx: Context<CancelBounty>) -> Result<()> {
         let bounty = &mut ctx.accounts.bounty;
+        
+        // Only allow cancellation in Created or InProgress state
         require!(
-            bounty.state == BountyState::Created || bounty.state == BountyState::InProgress,
+            bounty.state == BountyState::Created || 
+            bounty.state == BountyState::InProgress,
             BountyError::InvalidBountyState
         );
 
@@ -119,166 +172,19 @@ pub mod octasol_contract {
 
         bounty.state = BountyState::Cancelled;
 
+        // Emit event
+        let reason = if bounty.contributor.is_none() {
+            "No contributor assigned".to_string()
+        } else {
+            "Cancelled by maintainer".to_string()
+        };
+        
+        emit!(BountyCancelled {
+            bounty_id: bounty.bounty_id,
+            reason,
+        });
+
         Ok(())
     }
 }
 
-#[derive(Accounts)]
-#[instruction(bounty_id: u64)]
-pub struct InitializeBounty<'info> {
-    #[account(
-        init,
-        payer = maintainer,
-        space = Bounty::LEN,
-        seeds = [b"bounty".as_ref(), bounty_id.to_le_bytes().as_ref()],
-        bump
-    )]
-    pub bounty: Account<'info, Bounty>,
-
-    #[account(mut)]
-    pub maintainer: Signer<'info>,
-
-    #[account(
-        mut,
-        associated_token::mint = mint,
-        associated_token::authority = maintainer,
-    )]
-    pub maintainer_token_account: Account<'info, TokenAccount>,
-
-    #[account(
-        init,
-        payer = maintainer,
-        associated_token::mint = mint,
-        associated_token::authority = bounty,
-    )]
-    pub escrow_token_account: Account<'info, TokenAccount>,
-
-    pub mint: Account<'info, Mint>,
-    pub system_program: Program<'info, System>,
-    pub token_program: Program<'info, Token>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub rent: Sysvar<'info, Rent>,
-}
-
-#[derive(Accounts)]
-pub struct AssignContributor<'info> {
-    #[account(
-        mut,
-        has_one = maintainer,
-        seeds = [b"bounty".as_ref(), bounty.bounty_id.to_le_bytes().as_ref()],
-        bump
-    )]
-    pub bounty: Account<'info, Bounty>,
-
-    #[account(mut)]
-    pub maintainer: Signer<'info>,
-
-    /// CHECK: Contributor address is validated in the instruction
-    pub contributor: UncheckedAccount<'info>,
-}
-
-#[derive(Accounts)]
-pub struct CompleteBounty<'info> {
-    #[account(
-        mut,
-        has_one = maintainer,
-        constraint = bounty.contributor.unwrap() == contributor.key(),
-        seeds = [b"bounty".as_ref(), bounty.bounty_id.to_le_bytes().as_ref()],
-        bump
-    )]
-    pub bounty: Account<'info, Bounty>,
-
-    #[account(mut)]
-    pub maintainer: Signer<'info>,
-
-    /// CHECK: Contributor is validated in the account constraint
-    pub contributor: UncheckedAccount<'info>,
-
-    pub mint: Account<'info, Mint>,
-
-    #[account(
-        mut,
-        associated_token::mint = mint,
-        associated_token::authority = bounty,
-    )]
-    pub escrow_token_account: Account<'info, TokenAccount>,
-
-    #[account(
-        mut,
-        associated_token::mint = mint,
-        associated_token::authority = contributor,
-    )]
-    pub contributor_token_account: Account<'info, TokenAccount>,
-
-    pub token_program: Program<'info, Token>,
-}
-
-#[derive(Accounts)]
-pub struct CancelBounty<'info> {
-    #[account(
-        mut,
-        has_one = maintainer,
-        seeds = [b"bounty".as_ref(), bounty.bounty_id.to_le_bytes().as_ref()],
-        bump
-    )]
-    pub bounty: Account<'info, Bounty>,
-
-    #[account(mut)]
-    pub maintainer: Signer<'info>,
-
-    pub mint: Account<'info, Mint>,
-
-    #[account(
-        mut,
-        associated_token::mint = mint,
-        associated_token::authority = bounty,
-    )]
-    pub escrow_token_account: Account<'info, TokenAccount>,
-
-    #[account(
-        mut,
-        associated_token::mint = mint,
-        associated_token::authority = maintainer,
-    )]
-    pub maintainer_token_account: Account<'info, TokenAccount>,
-
-    pub token_program: Program<'info, Token>,
-}
-
-#[account]
-pub struct Bounty {
-    pub maintainer: Pubkey,
-    pub contributor: Option<Pubkey>,
-    pub amount: u64,
-    pub state: BountyState,
-    pub bounty_id: u64,
-    pub github_issue_id: u64,
-    pub maintainer_github_id: u64,
-    pub contributor_github_id: Option<u64>,
-}
-
-impl Bounty {
-    pub const LEN: usize = 8 + // discriminator
-        32 + // maintainer pubkey
-        33 + // contributor option pubkey
-        8 + // amount
-        1 + // state
-        8 + // bounty_id
-        8 + // github_issue_id
-        8 + // maintainer_github_id
-        9; // contributor_github_id option
-}
-
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq)]
-pub enum BountyState {
-    Created,
-    InProgress,
-    Completed,
-    Cancelled,
-}
-
-#[error_code]
-pub enum BountyError {
-    #[msg("Invalid bounty state for this operation")]
-    InvalidBountyState,
-}
