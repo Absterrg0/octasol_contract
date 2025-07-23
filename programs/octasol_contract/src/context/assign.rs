@@ -2,11 +2,12 @@ use anchor_lang::prelude::*;
 use crate::state::Bounty;
 
 #[derive(Accounts)]
+#[instruction(bounty_id: u64)]
 pub struct AssignContributor<'info> {
     #[account(
         mut,
         has_one = maintainer,
-        seeds = [b"bounty".as_ref(), bounty.bounty_id.to_le_bytes().as_ref()],
+        seeds = [b"bounty".as_ref(), bounty_id.to_le_bytes().as_ref()],
         bump
     )]
     pub bounty: Account<'info, Bounty>,

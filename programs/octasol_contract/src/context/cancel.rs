@@ -3,12 +3,13 @@ use anchor_spl::token::{Mint, TokenAccount, Token};
 use crate::state::Bounty;
 
 #[derive(Accounts)]
+#[instruction(bounty_id: u64)]
 pub struct CancelBounty<'info> {
     #[account(
         mut,
         has_one = maintainer,
         close = maintainer,  // Rent-exempt SOL goes back to maintainer on cancellation
-        seeds = [b"bounty".as_ref(), bounty.bounty_id.to_le_bytes().as_ref()],
+        seeds = [b"bounty", bounty_id.to_le_bytes().as_ref()],
         bump
     )]
     pub bounty: Account<'info, Bounty>,
@@ -16,11 +17,11 @@ pub struct CancelBounty<'info> {
     #[account(mut)]
     pub maintainer: Signer<'info>,
 
+    #[account()]
     pub mint: Account<'info, Mint>,
 
     #[account(
         mut,
-        close = maintainer,  // Escrow token account rent also goes back to maintainer
         associated_token::mint = mint,
         associated_token::authority = bounty,
     )]
@@ -33,5 +34,6 @@ pub struct CancelBounty<'info> {
     )]
     pub maintainer_token_account: Account<'info, TokenAccount>,
 
+    #[account(address = anchor_spl::token::ID)]
     pub token_program: Program<'info, Token>,
 }

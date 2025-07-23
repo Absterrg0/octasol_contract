@@ -3,12 +3,13 @@ use anchor_spl::token::{Mint, TokenAccount, Token};
 use crate::state::Bounty;
 
 #[derive(Accounts)]
+#[instruction(bounty_id: u64)]
 pub struct CompleteBounty<'info> {
     #[account(
         mut,
         has_one = maintainer,
             close = maintainer,  // Rent-exempt SOL goes to maintainer on completion
-        seeds = [b"bounty".as_ref(), bounty.bounty_id.to_le_bytes().as_ref()],
+        seeds = [b"bounty", bounty_id.to_le_bytes().as_ref()],
         bump
     )]
     pub bounty: Account<'info, Bounty>,
@@ -24,7 +25,6 @@ pub struct CompleteBounty<'info> {
 
     #[account(
         mut,
-        close = maintainer,  // Escrow token account rent also goes to contributor
         associated_token::mint = mint,
         associated_token::authority = bounty,
     )]

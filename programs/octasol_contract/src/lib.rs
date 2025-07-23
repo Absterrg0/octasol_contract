@@ -1,13 +1,13 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Transfer};
 
-mod state;
-mod context;
+pub mod context;
+pub mod state;
+pub mod util;
+
 use context::*;
 use state::*;
-mod util;
-use util::{errors::BountyError, events::*};
-
+use util::{errors::ContractError, events::*};
 
 
 declare_id!("tMf5EmV2h6sMJ2QMFU6766ACJpf7NTuamPzCudaNFus");
@@ -26,39 +26,29 @@ pub mod octasol_contract {
         github_issue_id: u64,
         maintainer_github_id: u64,
     ) -> Result<()> {
-        // Enhanced Validation
-        require!(amount > 0, BountyError::ZeroAmount);
-        
-        // Economic controls - minimum bounty amount (1000 tokens minimum)
-        const MIN_BOUNTY_AMOUNT: u64 = 1000;
-        require!(amount >= MIN_BOUNTY_AMOUNT, BountyError::InsufficientAmount);
-        
-        let clock = Clock::get()?;
-        
+        require!(amount > 0, ContractError::InvalidAmount);
+        require!(amount >= 1000, ContractError::InsufficientAmount);
+
         let bounty = &mut ctx.accounts.bounty;
+        bounty.bounty_id = bounty_id;
         bounty.maintainer = ctx.accounts.maintainer.key();
         bounty.amount = amount;
         bounty.github_issue_id = github_issue_id;
         bounty.maintainer_github_id = maintainer_github_id;
         bounty.state = BountyState::Created;
-        bounty.bounty_id = bounty_id;
-        bounty.created_at = clock.unix_timestamp;
+        bounty.contributor = None;
+        bounty.contributor_github_id = None;
 
-        let transfer_instruction = Transfer {
+        // Transfer tokens from maintainer to escrow
+        let cpi_accounts = Transfer {
             from: ctx.accounts.maintainer_token_account.to_account_info(),
             to: ctx.accounts.escrow_token_account.to_account_info(),
             authority: ctx.accounts.maintainer.to_account_info(),
         };
+        let cpi_program = ctx.accounts.token_program.to_account_info();
+        let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
+        token::transfer(cpi_ctx, amount)?;
 
-        token::transfer(
-            CpiContext::new(
-                ctx.accounts.token_program.to_account_info(),
-                transfer_instruction,
-            ),
-            amount,
-        )?;
-
-        // Emit event
         emit!(BountyCreated {
             bounty_id,
             maintainer: ctx.accounts.maintainer.key(),
@@ -72,27 +62,22 @@ pub mod octasol_contract {
     // Maintainer assigns contributor
     pub fn assign_contributor(
         ctx: Context<AssignContributor>,
+        bounty_id: u64,
         contributor_github_id: u64,
     ) -> Result<()> {
         let bounty = &mut ctx.accounts.bounty;
+        
         require!(
-            bounty.state == BountyState::Created,
-            BountyError::InvalidBountyState
-        );
-
-        // Prevent assigning if already has a contributor
-        require!(
-            bounty.contributor.is_none(),
-            BountyError::ContributorAlreadyAssigned
+            matches!(bounty.state, BountyState::Created),
+            ContractError::InvalidBountyState
         );
 
         bounty.contributor = Some(ctx.accounts.contributor.key());
         bounty.contributor_github_id = Some(contributor_github_id);
         bounty.state = BountyState::InProgress;
 
-        // Emit event
         emit!(ContributorAssigned {
-            bounty_id: bounty.bounty_id,
+            bounty_id,
             contributor: ctx.accounts.contributor.key(),
             contributor_github_id,
         });
@@ -101,38 +86,38 @@ pub mod octasol_contract {
     }
 
     // Maintainer completes bounty and pays contributor
-    pub fn complete_bounty(ctx: Context<CompleteBounty>) -> Result<()> {
-        let bounty = &mut ctx.accounts.bounty;
+    pub fn complete_bounty(ctx: Context<CompleteBounty>, bounty_id: u64) -> Result<()> {
+        let bounty = &ctx.accounts.bounty;
+        
         require!(
-            bounty.state == BountyState::InProgress,
-            BountyError::InvalidBountyState
+            matches!(bounty.state, BountyState::InProgress),
+            ContractError::InvalidBountyState
+        );
+
+        require!(
+            bounty.contributor == Some(ctx.accounts.contributor.key()),
+            ContractError::InvalidContributor
         );
 
         // Transfer tokens from escrow to contributor
-        let transfer_instruction = Transfer {
+        let seeds = &[
+            b"bounty".as_ref(),
+            &bounty.bounty_id.to_le_bytes(),
+            &[ctx.bumps.bounty],
+        ];
+        let signer_seeds = &[&seeds[..]];
+
+        let cpi_accounts = Transfer {
             from: ctx.accounts.escrow_token_account.to_account_info(),
             to: ctx.accounts.contributor_token_account.to_account_info(),
-            authority: bounty.to_account_info(),
+            authority: ctx.accounts.bounty.to_account_info(),
         };
+        let cpi_program = ctx.accounts.token_program.to_account_info();
+        let cpi_ctx = CpiContext::new_with_signer(cpi_program, cpi_accounts, signer_seeds);
+        token::transfer(cpi_ctx, bounty.amount)?;
 
-        token::transfer(
-            CpiContext::new_with_signer(
-                ctx.accounts.token_program.to_account_info(),
-                transfer_instruction,
-                &[&[
-                    b"bounty".as_ref(),
-                    bounty.bounty_id.to_le_bytes().as_ref(),
-                    &[ctx.bumps.bounty],
-                ]],
-            ),
-            bounty.amount,
-        )?;
-
-        bounty.state = BountyState::Completed;
-
-        // Emit event
         emit!(BountyCompleted {
-            bounty_id: bounty.bounty_id,
+            bounty_id,
             contributor: ctx.accounts.contributor.key(),
             amount: bounty.amount,
         });
@@ -140,48 +125,40 @@ pub mod octasol_contract {
         Ok(())
     }
 
-    pub fn cancel_bounty(ctx: Context<CancelBounty>) -> Result<()> {
-        let bounty = &mut ctx.accounts.bounty;
+    pub fn cancel_bounty(ctx: Context<CancelBounty>, bounty_id: u64) -> Result<()> {
+        let bounty = &ctx.accounts.bounty;
         
-        // Only allow cancellation in Created or InProgress state
         require!(
-            bounty.state == BountyState::Created || 
-            bounty.state == BountyState::InProgress,
-            BountyError::InvalidBountyState
+            matches!(bounty.state, BountyState::Created | BountyState::InProgress),
+            ContractError::InvalidBountyState
         );
 
         // Transfer tokens back to maintainer
-        let transfer_instruction = Transfer {
+        let seeds = &[
+            b"bounty".as_ref(),
+            &bounty.bounty_id.to_le_bytes(),
+            &[ctx.bumps.bounty],
+        ];
+        let signer_seeds = &[&seeds[..]];
+
+        let cpi_accounts = Transfer {
             from: ctx.accounts.escrow_token_account.to_account_info(),
             to: ctx.accounts.maintainer_token_account.to_account_info(),
-            authority: bounty.to_account_info(),
+            authority: ctx.accounts.bounty.to_account_info(),
         };
+        let cpi_program = ctx.accounts.token_program.to_account_info();
+        let cpi_ctx = CpiContext::new_with_signer(cpi_program, cpi_accounts, signer_seeds);
+        token::transfer(cpi_ctx, bounty.amount)?;
 
-        token::transfer(
-            CpiContext::new_with_signer(
-                ctx.accounts.token_program.to_account_info(),
-                transfer_instruction,
-                &[&[
-                    b"bounty".as_ref(),
-                    bounty.bounty_id.to_le_bytes().as_ref(),
-                    &[ctx.bumps.bounty],
-                ]],
-            ),
-            bounty.amount,
-        )?;
-
-        bounty.state = BountyState::Cancelled;
-
-        // Emit event
-        let reason = if bounty.contributor.is_none() {
-            "No contributor assigned".to_string()
+        let message = if bounty.state == BountyState::Created {
+            "No contributor assigned"
         } else {
-            "Cancelled by maintainer".to_string()
+            "Cancelled by maintainer"
         };
-        
+
         emit!(BountyCancelled {
-            bounty_id: bounty.bounty_id,
-            reason,
+            bounty_id,
+            reason: message.to_string(),
         });
 
         Ok(())
