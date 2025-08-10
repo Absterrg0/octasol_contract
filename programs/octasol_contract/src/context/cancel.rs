@@ -1,39 +1,35 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token::{Mint, TokenAccount, Token};
+use anchor_spl::{associated_token::AssociatedToken, token::{Mint, Token, TokenAccount}};
+
 use crate::state::Bounty;
 
+
+
 #[derive(Accounts)]
-#[instruction(bounty_id: u64)]
-pub struct CancelBounty<'info> {
-    #[account(
-        mut,
-        has_one = maintainer,
-        close = maintainer,  // Rent-exempt SOL goes back to maintainer on cancellation
-        seeds = [b"bounty", bounty_id.to_le_bytes().as_ref()],
-        bump
-    )]
-    pub bounty: Account<'info, Bounty>,
-
+pub struct CancelBounty<'info>{
     #[account(mut)]
-    pub maintainer: Signer<'info>,
-
-    #[account()]
-    pub mint: Account<'info, Mint>,
-
+    pub maintainer:Signer<'info>,
     #[account(
         mut,
-        associated_token::mint = mint,
-        associated_token::authority = bounty,
+        has_one=maintainer,
+        close=maintainer
     )]
-    pub escrow_token_account: Account<'info, TokenAccount>,
-
+    pub bounty: Account<'info,Bounty>,
     #[account(
         mut,
-        associated_token::mint = mint,
-        associated_token::authority = maintainer,
+        seeds=[b"escrow_auth",bounty.key().as_ref()],
+        bump=bounty.bump
     )]
-    pub maintainer_token_account: Account<'info, TokenAccount>,
-
-    #[account(address = anchor_spl::token::ID)]
-    pub token_program: Program<'info, Token>,
+    ///CHECK: Account for transferring funds from escrow to maintainer
+    pub escrow_authority:UncheckedAccount<'info>,
+    #[account(mut)]
+    pub maintainer_token_account:Account<'info,TokenAccount>,
+    #[account(mut)]
+    pub escrow_token_account:Account<'info,TokenAccount>,
+    pub system_program:Program<'info,System>,
+    pub token_program:Program<'info,Token>,
+    pub associated_token_program:Program<'info,AssociatedToken>,
+    pub rent:Sysvar<'info,Rent>
+    
+    
 }

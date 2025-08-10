@@ -9,13 +9,13 @@ octasol_contract = "tMf5EmV2h6sMJ2QMFU6766ACJpf7NTuamPzCudaNFus"
 
 
 [programs.devnet]
-octasol_contract ="Ay8FsRFjAN9KmD9S6USMuzS7wnobxqFqwBiQGGiYqen5"
+octasol_contract ="5y7GK42mAZm1C6qpFgUgGdNVLPkdd3wJhF9AkyRcDrUv"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "Localnet"
+cluster = "Devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]

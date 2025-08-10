@@ -1,41 +1,49 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token::{Mint, TokenAccount, Token};
+use anchor_spl::{associated_token::AssociatedToken, token::{ Token, TokenAccount}};
 use crate::state::Bounty;
 
 #[derive(Accounts)]
-#[instruction(bounty_id: u64)]
+
 pub struct CompleteBounty<'info> {
     #[account(
         mut,
-        has_one = maintainer,
-            close = maintainer,  // Rent-exempt SOL goes to maintainer on completion
-        seeds = [b"bounty", bounty_id.to_le_bytes().as_ref()],
-        bump
+        constraint = bounty.contributor.is_some(),
+        has_one=keeper,
+        close = maintainer
     )]
     pub bounty: Account<'info, Bounty>,
 
+    #[account(
+        seeds=[b"escrow_auth",bounty.key().as_ref()],
+        bump = bounty.bump
+    )]
+    /// CHECK:PDA SIGNER
+    pub escrow_authority: UncheckedAccount<'info>,
+
+    /// CHECK: Maintainer account for rent collection
     #[account(mut)]
-    pub maintainer: Signer<'info>,
+    pub maintainer: AccountInfo<'info>,
+
 
     /// CHECK: Contributor is validated by bounty.contributor field 
     #[account(mut)]
     pub contributor: UncheckedAccount<'info>,
 
-    pub mint: Account<'info, Mint>,
-
     #[account(
         mut,
-        associated_token::mint = mint,
-        associated_token::authority = bounty,
+
+    )]
+    pub keeper: Signer<'info>,
+
+    #[account(
+        mut
+    )]
+    pub contributor_token_account:Account<'info,TokenAccount>,
+    #[account(
+        mut
     )]
     pub escrow_token_account: Account<'info, TokenAccount>,
-
-    #[account(
-        mut,
-        associated_token::mint = mint,
-        associated_token::authority = contributor,
-    )]
-    pub contributor_token_account: Account<'info, TokenAccount>,
-
     pub token_program: Program<'info, Token>,
+    pub system_program: Program<'info,System>,
+    pub associated_token_program: Program<'info,AssociatedToken>
 }

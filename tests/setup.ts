@@ -1,22 +1,19 @@
 import * as anchor from '@coral-xyz/anchor';
 import { Program } from "@coral-xyz/anchor";
-import { OctasolContract } from "../target/types/octasol_contract";
+import { OctasolContract } from '../target/types/octasol_contract';
 import { 
   createMint, 
   createAssociatedTokenAccount, 
   mintTo, 
   getAccount,
   getAssociatedTokenAddress,
-  TOKEN_PROGRAM_ID,
-  ASSOCIATED_TOKEN_PROGRAM_ID
+  createAccount,
 } from '@solana/spl-token';
+import { Keypair, PublicKey, SystemProgram } from '@solana/web3.js';
 import { expect } from 'chai';
 
 // Test constants
-export const BOUNTY_AMOUNT = 5000; // Above minimum of 1000
-export const GITHUB_ISSUE_ID = 123;
-export const MAINTAINER_GITHUB_ID = 456;
-export const CONTRIBUTOR_GITHUB_ID = 789;
+export const BOUNTY_AMOUNT =new anchor.BN(5000) ; // Above minimum of 1000
 
 // Global test state
 export interface TestContext {
@@ -29,6 +26,10 @@ export interface TestContext {
   mint: anchor.web3.PublicKey;
   maintainerTokenAccount: anchor.web3.PublicKey;
   contributorTokenAccount: anchor.web3.PublicKey;
+  escrowAuthority:anchor.web3.PublicKey;
+  escrowKeyPair:anchor.web3.Keypair;
+  bounty:anchor.web3.PublicKey;
+  keeperKeyPair:anchor.web3.Keypair;
 }
 
 export async function setupTestEnvironment(): Promise<TestContext> {
@@ -61,21 +62,10 @@ export async function setupTestEnvironment(): Promise<TestContext> {
   );
 
   // Create token accounts
-  const maintainerTokenAccount = await createAssociatedTokenAccount(
-    connection,
-    wallet.payer,
-    mint,
-    maintainer.publicKey
-  );
+  const maintainerTokenAccount = await createAccount(connection,wallet.payer,mint,provider.publicKey);
 
-  const contributorTokenAccount = await createAssociatedTokenAccount(
-    connection,
-    wallet.payer,
-    mint,
-    contributor.publicKey
-  );
 
-  // Mint tokens to maintainer
+    // Mint tokens to maintainer
   await mintTo(
     connection,
     wallet.payer,
@@ -84,6 +74,34 @@ export async function setupTestEnvironment(): Promise<TestContext> {
     wallet.payer,
     100000 // 100k tokens
   );
+  const contributorAccount = await provider.sendAndConfirm(
+    new anchor.web3.Transaction().add(
+      SystemProgram.createAccount({
+        fromPubkey:provider.publicKey,
+        newAccountPubkey:provider.publicKey,
+        space:0,
+        lamports:await provider.connection.getMinimumBalanceForRentExemption(0),
+        programId:SystemProgram.programId
+      })
+    ),[contributor]
+  )
+
+  const contributorTokenAccount = await createAccount(connection,wallet.payer,mint,contributor.publicKey);
+
+  let keeperKeyPair = anchor.web3.Keypair.generate();
+  const escrowKeyPair = anchor.web3.Keypair.generate();
+
+  const escrowAuthority= getBountyPda(program,escrowKeyPair);
+
+  const bounty = await anchor.utils.token.associatedAddress({
+    mint:mint,
+    owner:escrowAuthority
+  }
+  )
+  
+
+
+
 
   return {
     provider,
@@ -94,7 +112,11 @@ export async function setupTestEnvironment(): Promise<TestContext> {
     contributor,
     mint,
     maintainerTokenAccount,
-    contributorTokenAccount
+    contributorTokenAccount,
+    escrowAuthority,
+    escrowKeyPair,
+    bounty,
+    keeperKeyPair,
   };
 }
 
@@ -103,104 +125,11 @@ export function generateBountyId(offset: number = 0): number {
   return Math.floor(Math.random() * 1000000) + offset;
 }
 
-export function getBountyPda(program: Program<OctasolContract>, bountyId: number): anchor.web3.PublicKey {
-  const [bountyPda] = anchor.web3.PublicKey.findProgramAddressSync(
-    [Buffer.from("bounty"), new anchor.BN(bountyId).toArrayLike(Buffer, "le", 8)],
+export function getBountyPda(program: Program<OctasolContract>, escrow:Keypair): anchor.web3.PublicKey {
+  const [bountyPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("escrow_auth"), escrow.publicKey.toBuffer()],
     program.programId
   );
   return bountyPda;
 }
 
-export async function createBounty(
-  ctx: TestContext, 
-  bountyId: number, 
-  amount: number = BOUNTY_AMOUNT
-): Promise<void> {
-  await ctx.program.methods
-    .initializeBounty(
-      new anchor.BN(bountyId),
-      new anchor.BN(amount),
-      new anchor.BN(GITHUB_ISSUE_ID),
-      new anchor.BN(MAINTAINER_GITHUB_ID)
-    )
-    .accountsPartial({
-      maintainer: ctx.maintainer.publicKey,
-      mint: ctx.mint,
-    })
-    .signers([ctx.maintainer])
-    .rpc();
-}
-
-export async function assignContributor(
-  ctx: TestContext,
-  bountyId: number,
-  contributorKey: anchor.web3.PublicKey = ctx.contributor.publicKey,
-  contributorGithubId: number = CONTRIBUTOR_GITHUB_ID
-): Promise<void> {
-  await ctx.program.methods
-    .assignContributor(
-      new anchor.BN(bountyId),
-      new anchor.BN(contributorGithubId)
-    )
-    .accountsPartial({
-      maintainer: ctx.maintainer.publicKey,
-      contributor: contributorKey,
-    })
-    .signers([ctx.maintainer])
-    .rpc();
-}
-
-export async function completeBounty(
-  ctx: TestContext,
-  bountyId: number,
-  contributorKey: anchor.web3.PublicKey = ctx.contributor.publicKey
-): Promise<void> {
-  await ctx.program.methods
-    .completeBounty(new anchor.BN(bountyId))
-    .accountsPartial({
-      maintainer: ctx.maintainer.publicKey,
-      contributor: contributorKey,
-      mint: ctx.mint,
-    })
-    .signers([ctx.maintainer])
-    .rpc();
-}
-
-export async function cancelBounty(
-  ctx: TestContext,
-  bountyId: number
-): Promise<void> {
-  await ctx.program.methods
-    .cancelBounty(new anchor.BN(bountyId))
-    .accountsPartial({
-      maintainer: ctx.maintainer.publicKey,
-      mint: ctx.mint,
-    })
-    .signers([ctx.maintainer])
-    .rpc();
-}
-
-// Error expectation helpers
-export function expectConstraintError(err: any): void {
-  if (err.logs) {
-    expect(
-      err.logs.some(log => log.includes("ConstraintHasOne")) ||
-      err.logs.some(log => log.includes("Error"))
-    ).to.be.true;
-  } else if (err.error && err.error.errorCode) {
-    expect(err.error.errorCode.code).to.equal("ConstraintHasOne");
-  } else {
-    expect(err).to.exist;
-  }
-}
-
-export function expectAccountClosedError(err: any): void {
-  expect(err.message).to.include("AnchorError");
-}
-
-export function expectAccountNotFoundError(err: any): void {
-  expect(err.message).to.include("Account does not exist");
-}
-
-// Re-export common testing utilities
-export { expect, getAccount, getAssociatedTokenAddress, createMint, createAssociatedTokenAccount }; 
