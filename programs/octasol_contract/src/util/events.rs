@@ -27,3 +27,9 @@ pub struct BountyCancelled {
     pub maintainer: Pubkey,
     pub amount: u64,
 }
+
+#[event]
+pub struct AdminUpdated {
+    pub old_admin: Pubkey,
+    pub new_admin: Pubkey,
+}

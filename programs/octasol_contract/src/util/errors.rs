@@ -10,6 +10,22 @@ pub enum ContractError {
     InvalidBountyState,
     #[msg("Invalid contributor")]
     InvalidContributor,
+    #[msg("Unauthorized access")]
+    Unauthorized,
+    #[msg("Bounty is not in correct state for this operation")]
+    InvalidBountyStateForOperation,
+    #[msg("Maintainer mismatch")]
+    MaintainerMismatch,
+    #[msg("Contributor already assigned")]
+    ContributorAlreadyAssigned,
+    #[msg("Bounty is already completed")]
+    BountyAlreadyCompleted,
+    #[msg("Bounty is already cancelled")]
+    BountyAlreadyCancelled,
+    #[msg("Invalid mint")]
+    InvalidMint,
+    #[msg("Invalid token account")]
+    InvalidTokenAccount,
 }
 
 

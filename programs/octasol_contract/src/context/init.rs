@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{Mint, TokenAccount, Token};
 use anchor_spl::associated_token::AssociatedToken;
-use crate::state::Bounty;
+use crate::state::{Bounty, ConfigState};
 
 #[derive(Accounts)]
 pub struct InitializeBounty<'info> {
@@ -14,10 +14,10 @@ pub struct InitializeBounty<'info> {
     )]
     pub bounty: Account<'info, Bounty>,
 
-
-
     #[account(
-        mut
+        mut,
+        constraint = maintainer_token_account.owner == maintainer.key() @ crate::util::errors::ContractError::InvalidTokenAccount,
+        constraint = maintainer_token_account.mint == mint.key() @ crate::util::errors::ContractError::InvalidMint
     )]
     pub maintainer_token_account: Account<'info, TokenAccount>,
 
@@ -28,9 +28,12 @@ pub struct InitializeBounty<'info> {
     /// CHECK: PDA SIGNER
     pub escrow_authority : UncheckedAccount<'info>,
 
+    #[account(
+        seeds = [b"config"],
+        bump,
+    )]
+    pub config: Account<'info, ConfigState>,
 
-    /// CHECK : KEEPER ACCOUNT FOR AUTO DISPENSING
-    pub keeper : UncheckedAccount<'info>,
     #[account(
         init,
         payer = maintainer,

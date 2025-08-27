@@ -17,8 +17,6 @@ pub struct Bounty {
     pub amount: u64,
     pub state: BountyState,
     pub bounty_id: u64,
-    pub keeper: Pubkey
-
 }
 
 impl Bounty {
@@ -29,7 +27,6 @@ impl Bounty {
         1 + // state
         8 + // bounty_id
         32 + // mint address
-        8 +  // bump
-        32 ; // keeper
+        8;  // bump
 }
 

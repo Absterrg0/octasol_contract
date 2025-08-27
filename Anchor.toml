@@ -7,9 +7,10 @@ skip-lint = false
 [programs.localnet]
 octasol_contract = "tMf5EmV2h6sMJ2QMFU6766ACJpf7NTuamPzCudaNFus"
 
+[programs.Devnet]
+octasol_contract = "9fEwdooYgtnUje89t6jTtqnfeeJ1e8oNZm6QP67tSksp"
 
-[programs.devnet]
-octasol_contract ="5y7GK42mAZm1C6qpFgUgGdNVLPkdd3wJhF9AkyRcDrUv"
+
 
 [registry]
 url = "https://api.apr.dev"
