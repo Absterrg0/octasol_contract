@@ -16,8 +16,6 @@ pub struct AdminAssignAndRelease<'info> {
 
     #[account(
         mut,
-        constraint = bounty.state == crate::state::BountyState::Created @ crate::util::errors::ContractError::InvalidBountyStateForOperation,
-        constraint = bounty.contributor.is_none() @ crate::util::errors::ContractError::ContributorAlreadyAssigned,
         close = maintainer
     )]
     pub bounty: Account<'info, Bounty>,

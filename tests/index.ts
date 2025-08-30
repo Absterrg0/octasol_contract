@@ -1250,7 +1250,7 @@ describe("Octasol Escrow Contract", () => {
     }
   });
 
-  it("Admin assign+release fails when contributor already assigned (InvalidBountyStateForOperation)", async () => {
+  it("Admin assign+release overrides existing contributor successfully", async () => {
     const bntyKp = anchor.web3.Keypair.generate();
     const newBountyId = generateBountyId();
     const initialContributor = anchor.web3.Keypair.generate();
@@ -1275,7 +1275,7 @@ describe("Octasol Escrow Contract", () => {
       rent: SYSVAR_RENT_PUBKEY,
     }).signers([bntyKp]).rpc();
 
-    // Assign once using maintainer flow (moves state to InProgress)
+    // Assign initial contributor using maintainer flow
     await program.methods.assignContributor().accounts({
       maintainer: maintainer.publicKey,
       bounty: bntyKp.publicKey,
@@ -1283,7 +1283,12 @@ describe("Octasol Escrow Contract", () => {
       systemProgram: SystemProgram.programId,
     }).rpc();
 
-    // Ensure contributor ATA exists
+    // Verify initial assignment
+    const bountyAfterInitial = await program.account.bounty.fetch(bntyKp.publicKey);
+    assert.equal(bountyAfterInitial.contributor.toString(), initialContributor.publicKey.toString());
+    assert.equal(bountyAfterInitial.state, 1); // InProgress
+
+    // Ensure target contributor ATA exists
     const contribAta = await createAssociatedTokenAccount(
       connection,
       wallet.payer,
@@ -1291,23 +1296,28 @@ describe("Octasol Escrow Contract", () => {
       targetContributor.publicKey
     );
 
-    try {
-      await program.methods.adminAssignAndRelease(newBountyId).accounts({
-        admin: admin.publicKey,
-        config: configPda,
-        bounty: bntyKp.publicKey,
-        escrowAuthority: escrowAuth,
-        maintainer: maintainer.publicKey,
-        contributor: targetContributor.publicKey,
-        contributorTokenAccount: contribAta,
-        escrowTokenAccount: escrowAta,
-        tokenProgram: TOKEN_PROGRAM_ID,
-        systemProgram: SystemProgram.programId,
-        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-      }).signers([admin]).rpc();
-      assert.fail("Expected InvalidBountyStateForOperation");
-    } catch (e) {
-      expectAnchorErrorCode(e, "InvalidBountyStateForOperation");
-    }
+    // Admin overrides with new contributor and releases funds
+    await program.methods.adminAssignAndRelease(newBountyId).accounts({
+      admin: admin.publicKey,
+      config: configPda,
+      bounty: bntyKp.publicKey,
+      escrowAuthority: escrowAuth,
+      maintainer: maintainer.publicKey,
+      contributor: targetContributor.publicKey,
+      contributorTokenAccount: contribAta,
+      escrowTokenAccount: escrowAta,
+      tokenProgram: TOKEN_PROGRAM_ID,
+      systemProgram: SystemProgram.programId,
+      associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+    }).signers([admin]).rpc();
+
+    // Verify override and completion
+    const bountyAfterOverride = await program.account.bounty.fetch(bntyKp.publicKey);
+    assert.equal(bountyAfterOverride.contributor.toString(), targetContributor.publicKey.toString());
+    assert.equal(bountyAfterOverride.state, 2); // Completed
+
+    // Verify funds were transferred to new contributor
+    const contribInfo = await getAccount(connection, contribAta);
+    assert.equal(contribInfo.amount.toString(), BOUNTY_AMOUNT.toString());
   });
 });

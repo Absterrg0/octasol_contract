@@ -206,18 +206,21 @@ pub fn assign_contributor(ctx: Context<AssignContributor>) -> Result<()> {
 
         // Security checks
         require!(bounty.bounty_id == bounty_id, ContractError::InvalidBountyState);
-        require!(bounty.state == BountyState::Created, ContractError::InvalidBountyStateForOperation);
-        require!(bounty.contributor.is_none(), ContractError::ContributorAlreadyAssigned);
         require!(bounty.mint == ctx.accounts.contributor_token_account.mint, ContractError::InvalidMint);
         require!(bounty.mint == ctx.accounts.escrow_token_account.mint, ContractError::InvalidMint);
 
-        // Assign contributor
-        let contributor_key = ctx.accounts.contributor.key();
-        bounty.contributor = Some(contributor_key);
-        bounty.state = BountyState::InProgress;
-        emit!(ContributorAssigned { bounty_id: bounty.bounty_id, contributor: contributor_key });
+        // Get the new contributor key
+        let new_contributor_key = ctx.accounts.contributor.key();
+        
 
-        // Release funds from escrow to contributor
+        // Override with new contributor (admin super power)
+        bounty.contributor = Some(new_contributor_key);
+        bounty.state = BountyState::InProgress;
+        
+        // Emit event for contributor assignment
+        emit!(ContributorAssigned { bounty_id: bounty.bounty_id, contributor: new_contributor_key });
+
+        // Release funds from escrow to new contributor
         let bounty_key = bounty.key();
         let bump = bounty.bump;
         let seeds = &[b"escrow_auth", bounty_key.as_ref(), &[bump]];
@@ -234,9 +237,10 @@ pub fn assign_contributor(ctx: Context<AssignContributor>) -> Result<()> {
         );
         transfer(cpi_ctx, bounty.amount)?;
 
+        // Emit completion event
         emit!(BountyCompleted {
             bounty_id,
-            contributor: ctx.accounts.contributor.key(),
+            contributor: new_contributor_key,
             amount: bounty.amount,
         });
 
