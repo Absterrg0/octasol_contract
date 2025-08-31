@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{Mint, TokenAccount, Token};
 use anchor_spl::associated_token::AssociatedToken;
-use crate::state::{Bounty, ConfigState};
+use crate::state::Bounty;
 
 #[derive(Accounts)]
 pub struct InitializeBounty<'info> {
@@ -27,12 +27,6 @@ pub struct InitializeBounty<'info> {
     )]
     /// CHECK: PDA SIGNER
     pub escrow_authority : UncheckedAccount<'info>,
-
-    #[account(
-        seeds = [b"config"],
-        bump,
-    )]
-    pub config: Account<'info, ConfigState>,
 
     #[account(
         init,

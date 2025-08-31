@@ -1,12 +1,11 @@
-import { Connection, Keypair, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
+import { Connection, Keypair, PublicKey, Transaction } from "@solana/web3.js";
 import { AnchorProvider, Program } from "@coral-xyz/anchor";
-
+import dotenv from 'dotenv'
 import idl from '../../target/idl/octasol_contract.json'
 
 import NodeWallet from '@coral-xyz/anchor/dist/cjs/nodewallet' 
 import { bs58 } from "@coral-xyz/anchor/dist/cjs/utils/bytes";
 import * as readline from 'readline';
-import dotenv from 'dotenv';
 dotenv.config();
 
 // Parse command line arguments

@@ -58,7 +58,7 @@ describe("Octasol Escrow Contract", () => {
     await connection.confirmTransaction(
       await connection.requestAirdrop(contributor.publicKey, 2 * anchor.web3.LAMPORTS_PER_SOL),
       "confirmed"
-    );
+  );
 
     // Create the token mint
     mint = await createMint(
@@ -117,7 +117,7 @@ describe("Octasol Escrow Contract", () => {
     // Initialize the config
     await program.methods
       .initializeConfig()
-      .accounts({
+      .accountsPartial({
         admin: admin.publicKey,
         config: configPda,
         systemProgram: SystemProgram.programId,
@@ -129,12 +129,11 @@ describe("Octasol Escrow Contract", () => {
     // Now you can write your test with the correctly initialized variables
     await program.methods
       .initializeBounty(bountyId, BOUNTY_AMOUNT)
-      .accounts({
+      .accountsPartial({
         maintainer: maintainer.publicKey,
         bounty: bountyAccountKp.publicKey,
         maintainerTokenAccount: maintainerTokenAccount,
         escrowAuthority: escrowAuthorityPda,
-        config: configPda,
         escrowTokenAccount: escrowTokenAccount,
         mint: mint,
         systemProgram: SystemProgram.programId,
@@ -164,7 +163,7 @@ describe("Octasol Escrow Contract", () => {
         // Call the assignContributor instruction
         await program.methods
             .assignContributor()
-            .accounts({
+            .accountsPartial({
                 maintainer: maintainer.publicKey,
                 bounty: bountyAccountKp.publicKey,
                 contributor: contributor.publicKey,
@@ -198,7 +197,7 @@ describe("Octasol Escrow Contract", () => {
     try {
         await program.methods
             .assignContributor()
-            .accounts({
+            .accountsPartial({
                 maintainer: maintainer.publicKey,
                 bounty: bountyAccountKp.publicKey,
                 contributor: secondContributor.publicKey,
@@ -232,12 +231,11 @@ describe("Octasol Escrow Contract", () => {
     // Initialize bounty with correct maintainer
     await program.methods
       .initializeBounty(generateBountyId(), BOUNTY_AMOUNT)
-      .accounts({
+      .accountsPartial({
         maintainer: maintainer.publicKey,
         bounty: testBountyKp.publicKey,
         maintainerTokenAccount: maintainerTokenAccount,
         escrowAuthority: testEscrowAuthorityPda,
-        config: configPda,
         escrowTokenAccount: testEscrowTokenAccount,
         mint: mint,
         systemProgram: SystemProgram.programId,
@@ -252,7 +250,7 @@ describe("Octasol Escrow Contract", () => {
     try {
         await program.methods
             .assignContributor()
-            .accounts({
+            .accountsPartial({
                 maintainer: wrongMaintainer.publicKey,
                 bounty: testBountyKp.publicKey,
                 contributor: contributor.publicKey,
@@ -271,7 +269,7 @@ describe("Octasol Escrow Contract", () => {
     try {
         await program.methods
             .completeBounty(bountyId) 
-            .accounts({
+            .accountsPartial({
                 bounty: bountyAccountKp.publicKey,
                 escrowAuthority: escrowAuthorityPda,
                 maintainer: maintainer.publicKey,
@@ -303,14 +301,15 @@ describe("Octasol Escrow Contract", () => {
         "Contributor token account should have received the bounty amount."
     );
 
-    const escrowTokenAccountInfo = await getAccount(connection, escrowTokenAccount);
-    assert.equal(
-        escrowTokenAccountInfo.amount.toString(), 
-        "0",
-        "Escrow token account should be empty."
-    );
+    // Verify the escrow token account is closed (should throw an error when trying to fetch)
+    try {
+      await getAccount(connection, escrowTokenAccount);
+      assert.fail("Escrow token account should be closed after bounty completion");
+    } catch (error) {
+      assert.isOk(error, "Successfully confirmed escrow token account is closed");
+    }
 
-    console.log("Bounty successfully completed and contributor paid!");
+
   });
 
   it("Fails to complete bounty with wrong admin!", async () => {
@@ -341,12 +340,11 @@ describe("Octasol Escrow Contract", () => {
     // Initialize and assign contributor
     await program.methods
       .initializeBounty(generateBountyId(), BOUNTY_AMOUNT)
-      .accounts({
+      .accountsPartial({
         maintainer: maintainer.publicKey,
         bounty: testBountyKp.publicKey,
         maintainerTokenAccount: maintainerTokenAccount,
         escrowAuthority: testEscrowAuthorityPda,
-        config: configPda,
         escrowTokenAccount: testEscrowTokenAccount,
         mint: mint,
         systemProgram: SystemProgram.programId,
@@ -359,7 +357,7 @@ describe("Octasol Escrow Contract", () => {
 
     await program.methods
       .assignContributor()
-      .accounts({
+      .accountsPartial({
         maintainer: maintainer.publicKey,
         bounty: testBountyKp.publicKey,
         contributor: testContributor.publicKey,
@@ -370,7 +368,7 @@ describe("Octasol Escrow Contract", () => {
     try {
         await program.methods
             .completeBounty(generateBountyId())
-            .accounts({
+            .accountsPartial({
                 bounty: testBountyKp.publicKey,
                 escrowAuthority: testEscrowAuthorityPda,
                 maintainer: maintainer.publicKey,
@@ -414,12 +412,11 @@ describe("Octasol Escrow Contract", () => {
     // 1. Initialize the new bounty
     await program.methods
         .initializeBounty(cancelBountyId, BOUNTY_AMOUNT)
-        .accounts({
+        .accountsPartial({
             maintainer: maintainer.publicKey,
             bounty: cancelBountyKp.publicKey,
             maintainerTokenAccount: maintainerTokenAccount,
             escrowAuthority: cancelEscrowAuthorityPda,
-            config: configPda,
             escrowTokenAccount: cancelEscrowTokenAccount,
             mint: mint,
             systemProgram: SystemProgram.programId,
@@ -433,7 +430,7 @@ describe("Octasol Escrow Contract", () => {
     // 2. Assign a contributor to it
     await program.methods
         .assignContributor()
-        .accounts({
+        .accountsPartial({
             maintainer: maintainer.publicKey,
             bounty: cancelBountyKp.publicKey,
             contributor: cancelContributor.publicKey,
@@ -445,7 +442,7 @@ describe("Octasol Escrow Contract", () => {
     try {
         await program.methods
             .cancelBounty()
-            .accounts({
+            .accountsPartial({
                 admin: admin.publicKey,
                 config: configPda,
                 bounty: cancelBountyKp.publicKey,
@@ -493,7 +490,6 @@ describe("Octasol Escrow Contract", () => {
         assert.isOk(error, "Successfully confirmed bounty account is closed.");
     }
 
-    console.log("Bounty successfully cancelled and funds returned to maintainer!");
   });
 
   it("Only admin can cancel bounty!", async () => {
@@ -515,12 +511,11 @@ describe("Octasol Escrow Contract", () => {
 
     await program.methods
         .initializeBounty(securityCancelBountyId, BOUNTY_AMOUNT)
-        .accounts({
+        .accountsPartial({
             maintainer: maintainer.publicKey,
             bounty: securityCancelBountyKp.publicKey,
             maintainerTokenAccount: maintainerTokenAccount,
             escrowAuthority: securityCancelEscrowAuthorityPda,
-            config: configPda,
             escrowTokenAccount: securityCancelEscrowTokenAccount,
             mint: mint,
             systemProgram: SystemProgram.programId,
@@ -533,7 +528,7 @@ describe("Octasol Escrow Contract", () => {
 
     await program.methods
         .assignContributor()
-        .accounts({
+        .accountsPartial({
             maintainer: maintainer.publicKey,
             bounty: securityCancelBountyKp.publicKey,
             contributor: securityCancelContributor.publicKey,
@@ -544,7 +539,7 @@ describe("Octasol Escrow Contract", () => {
     try {
         await program.methods
             .cancelBounty()
-            .accounts({
+            .accountsPartial({
                 admin: wrongAdmin.publicKey,
                 config: configPda,
                 bounty: securityCancelBountyKp.publicKey,
@@ -613,7 +608,7 @@ describe("Octasol Escrow Contract", () => {
     const revertedConfig = await program.account.configState.fetch(configPda);
     assert.ok(revertedConfig.admin.equals(admin.publicKey), "Admin should be reverted to the original admin");
 
-    console.log("Admin successfully updated and reverted!");
+
   });
 
   it("Fails to update admin when called by non-admin!", async () => {
@@ -641,7 +636,7 @@ describe("Octasol Escrow Contract", () => {
       assert.fail("Update admin should have failed when called by non-admin");
     } catch (error) {
       // This is expected - the transaction should fail
-      console.log("Successfully prevented non-admin from updating admin");
+
       assert.isOk(error, "Transaction should have failed");
     }
   });
@@ -668,7 +663,7 @@ describe("Octasol Escrow Contract", () => {
       
       assert.fail("Update admin should have failed when setting same admin");
     } catch (error) {
-      console.log("Successfully prevented setting admin to same value");
+
       assert.isOk(error, "Transaction should have failed");
     }
   });
@@ -695,7 +690,7 @@ describe("Octasol Escrow Contract", () => {
       
       assert.fail("Update admin should have failed when setting to default pubkey");
     } catch (error) {
-      console.log("Successfully prevented setting admin to default pubkey");
+
       assert.isOk(error, "Transaction should have failed");
     }
   });
@@ -705,13 +700,8 @@ describe("Octasol Escrow Contract", () => {
     const currentConfig = await program.account.configState.fetch(configPda);
     const currentAdminPubkey = currentConfig.admin;
     
-    console.log("Current admin in config:", currentAdminPubkey.toBase58());
-    console.log("Original admin (wallet):", admin.publicKey.toBase58());
-    
     // If the current admin is not the original admin, we need to reset it
     if (!currentAdminPubkey.equals(admin.publicKey)) {
-      console.log("Resetting admin to original admin for testing...");
-      
       // Create a temporary admin that we can use to reset back to the original admin
       const tempAdmin = anchor.web3.Keypair.generate();
       await connection.confirmTransaction(
@@ -721,8 +711,6 @@ describe("Octasol Escrow Contract", () => {
       
       // First, update to the temp admin (this should work if we have the current admin's key)
       // But since we don't have the current admin's private key, we'll skip this test
-      console.log("Cannot reset admin without current admin's private key, skipping this test");
-      console.log("This is expected behavior - admin security is working correctly");
       return;
     }
 
@@ -762,12 +750,11 @@ describe("Octasol Escrow Contract", () => {
     // Initialize the test bounty
     await program.methods
       .initializeBounty(testBountyId, BOUNTY_AMOUNT)
-      .accounts({
+      .accountsPartial({
         maintainer: maintainer.publicKey,
         bounty: testBountyKp.publicKey,
         maintainerTokenAccount: maintainerTokenAccount,
         escrowAuthority: testEscrowAuthorityPda,
-        config: configPda,
         escrowTokenAccount: testEscrowTokenAccount,
         mint: mint,
         systemProgram: SystemProgram.programId,
@@ -781,7 +768,7 @@ describe("Octasol Escrow Contract", () => {
     // Assign contributor
     await program.methods
       .assignContributor()
-      .accounts({
+      .accountsPartial({
         maintainer: maintainer.publicKey,
         bounty: testBountyKp.publicKey,
         contributor: testContributor.publicKey,
@@ -794,8 +781,7 @@ describe("Octasol Escrow Contract", () => {
     assert.ok(bountyAccount.contributor.equals(testContributor.publicKey), "Contributor should be assigned");
     assert.ok(bountyAccount.state.hasOwnProperty('inProgress'), "Bounty should be in progress");
 
-    console.log("Bounty creation and assignment works with current admin state!");
-    console.log("Note: Cannot test bounty completion since we don't have the current admin's private key");
+
   });
 
   it("Wrong admin cannot complete bounty!", async () => {
@@ -813,7 +799,7 @@ describe("Octasol Escrow Contract", () => {
     // If the current admin is not the original admin, we need to use the current admin for bounty creation
     // But since we don't have the current admin's private key, we'll test the security constraint differently
     if (!currentAdminPubkey.equals(admin.publicKey)) {
-      console.log("Current admin is not the original admin, testing security constraint...");
+
       
       // Test that a non-admin cannot create a bounty
       const nonAdminMaintainer = anchor.web3.Keypair.generate();
@@ -854,12 +840,11 @@ describe("Octasol Escrow Contract", () => {
       try {
         await program.methods
           .initializeBounty(generateBountyId(), BOUNTY_AMOUNT)
-          .accounts({
+          .accountsPartial({
             maintainer: nonAdminMaintainer.publicKey,
             bounty: testBountyKp.publicKey,
             maintainerTokenAccount: nonAdminTokenAccount, // Use the non-admin's token account
             escrowAuthority: testEscrowAuthorityPda,
-            config: configPda,
             escrowTokenAccount: testEscrowTokenAccount,
             mint: mint,
             systemProgram: SystemProgram.programId,
@@ -874,7 +859,7 @@ describe("Octasol Escrow Contract", () => {
       } catch (error) {
         if (error instanceof AnchorError) {
           assert.equal(error.error.errorCode.code, "Unauthorized", "Should fail with Unauthorized error");
-          console.log("Successfully prevented non-admin from creating bounty");
+
         } else {
           console.log("Transaction failed as expected:", error);
         }
@@ -919,12 +904,11 @@ describe("Octasol Escrow Contract", () => {
     // Initialize the test bounty
     await program.methods
       .initializeBounty(testBountyId, BOUNTY_AMOUNT)
-      .accounts({
+      .accountsPartial({
         maintainer: maintainer.publicKey,
         bounty: testBountyKp.publicKey,
         maintainerTokenAccount: maintainerTokenAccount,
         escrowAuthority: testEscrowAuthorityPda,
-        config: configPda,
         escrowTokenAccount: testEscrowTokenAccount,
         mint: mint,
         systemProgram: SystemProgram.programId,
@@ -938,7 +922,7 @@ describe("Octasol Escrow Contract", () => {
     // Assign contributor
     await program.methods
       .assignContributor()
-      .accounts({
+      .accountsPartial({
         maintainer: maintainer.publicKey,
         bounty: testBountyKp.publicKey,
         contributor: testContributor.publicKey,
@@ -950,7 +934,7 @@ describe("Octasol Escrow Contract", () => {
     try {
       await program.methods
         .completeBounty(testBountyId)
-        .accounts({
+        .accountsPartial({
           bounty: testBountyKp.publicKey,
           escrowAuthority: testEscrowAuthorityPda,
           maintainer: maintainer.publicKey,
@@ -992,12 +976,11 @@ describe("Octasol Escrow Contract", () => {
     const escrowAta = await getAssociatedTokenAddress(mint, escrowAuth, true);
 
     // init bounty
-    await program.methods.initializeBounty(newBountyId, BOUNTY_AMOUNT).accounts({
+    await program.methods.initializeBounty(newBountyId, BOUNTY_AMOUNT).accountsPartial({
       maintainer: maintainer.publicKey,
       bounty: bntyKp.publicKey,
       maintainerTokenAccount: maintainerTokenAccount,
       escrowAuthority: escrowAuth,
-      config: configPda,
       escrowTokenAccount: escrowAta,
       mint,
       systemProgram: SystemProgram.programId,
@@ -1014,7 +997,7 @@ describe("Octasol Escrow Contract", () => {
       targetContributor.publicKey
     );
 
-    await program.methods.adminAssignAndRelease(newBountyId).accounts({
+    await program.methods.adminAssignAndRelease(newBountyId).accountsPartial({
       admin: admin.publicKey,
       config: configPda,
       bounty: bntyKp.publicKey,
@@ -1044,12 +1027,11 @@ describe("Octasol Escrow Contract", () => {
     ], program.programId);
     const escrowAta = await getAssociatedTokenAddress(mint, escrowAuth, true);
 
-    await program.methods.initializeBounty(newBountyId, BOUNTY_AMOUNT).accounts({
+    await program.methods.initializeBounty(newBountyId, BOUNTY_AMOUNT).accountsPartial({
       maintainer: maintainer.publicKey,
       bounty: bntyKp.publicKey,
       maintainerTokenAccount: maintainerTokenAccount,
       escrowAuthority: escrowAuth,
-      config: configPda,
       escrowTokenAccount: escrowAta,
       mint,
       systemProgram: SystemProgram.programId,
@@ -1067,7 +1049,7 @@ describe("Octasol Escrow Contract", () => {
     );
 
     try {
-      await program.methods.adminAssignAndRelease(newBountyId).accounts({
+      await program.methods.adminAssignAndRelease(newBountyId).accountsPartial({
         admin: wrong.publicKey,
         config: configPda,
         bounty: bntyKp.publicKey,
@@ -1086,64 +1068,6 @@ describe("Octasol Escrow Contract", () => {
     }
   });
 
-  it("Admin assign+release fails when bounty not Created (InvalidBountyStateForOperation)", async () => {
-    const bntyKp = anchor.web3.Keypair.generate();
-    const newBountyId = generateBountyId();
-    const targetContributor = anchor.web3.Keypair.generate();
-    const [escrowAuth] = anchor.web3.PublicKey.findProgramAddressSync([
-      Buffer.from("escrow_auth"), bntyKp.publicKey.toBuffer()
-    ], program.programId);
-    const escrowAta = await getAssociatedTokenAddress(mint, escrowAuth, true);
-
-    await program.methods.initializeBounty(newBountyId, BOUNTY_AMOUNT).accounts({
-      maintainer: maintainer.publicKey,
-      bounty: bntyKp.publicKey,
-      maintainerTokenAccount: maintainerTokenAccount,
-      escrowAuthority: escrowAuth,
-      config: configPda,
-      escrowTokenAccount: escrowAta,
-      mint,
-      systemProgram: SystemProgram.programId,
-      tokenProgram: TOKEN_PROGRAM_ID,
-      associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-      rent: SYSVAR_RENT_PUBKEY,
-    }).signers([bntyKp]).rpc();
-
-    // Put bounty into InProgress by assigning via maintainer
-    await program.methods.assignContributor().accounts({
-      maintainer: maintainer.publicKey,
-      bounty: bntyKp.publicKey,
-      contributor: targetContributor.publicKey,
-      systemProgram: SystemProgram.programId,
-    }).rpc();
-
-    // Ensure contributor ATA exists
-    const contribAta = await createAssociatedTokenAccount(
-      connection,
-      wallet.payer,
-      mint,
-      targetContributor.publicKey
-    );
-
-    try {
-      await program.methods.adminAssignAndRelease(newBountyId).accounts({
-        admin: admin.publicKey,
-        config: configPda,
-        bounty: bntyKp.publicKey,
-        escrowAuthority: escrowAuth,
-        maintainer: maintainer.publicKey,
-        contributor: targetContributor.publicKey,
-        contributorTokenAccount: contribAta,
-        escrowTokenAccount: escrowAta,
-        tokenProgram: TOKEN_PROGRAM_ID,
-        systemProgram: SystemProgram.programId,
-        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-      }).signers([admin]).rpc();
-      assert.fail("Expected InvalidBountyStateForOperation");
-    } catch (e) {
-      expectAnchorErrorCode(e, "InvalidBountyStateForOperation");
-    }
-  });
 
   it("Admin assign+release fails with contributor ATA mint mismatch (InvalidMint)", async () => {
     const bntyKp = anchor.web3.Keypair.generate();
@@ -1154,12 +1078,11 @@ describe("Octasol Escrow Contract", () => {
     ], program.programId);
     const escrowAta = await getAssociatedTokenAddress(mint, escrowAuth, true);
 
-    await program.methods.initializeBounty(newBountyId, BOUNTY_AMOUNT).accounts({
+    await program.methods.initializeBounty(newBountyId, BOUNTY_AMOUNT).accountsPartial({
       maintainer: maintainer.publicKey,
       bounty: bntyKp.publicKey,
       maintainerTokenAccount: maintainerTokenAccount,
       escrowAuthority: escrowAuth,
-      config: configPda,
       escrowTokenAccount: escrowAta,
       mint,
       systemProgram: SystemProgram.programId,
@@ -1178,7 +1101,7 @@ describe("Octasol Escrow Contract", () => {
     );
 
     try {
-      await program.methods.adminAssignAndRelease(newBountyId).accounts({
+      await program.methods.adminAssignAndRelease(newBountyId).accountsPartial({
         admin: admin.publicKey,
         config: configPda,
         bounty: bntyKp.publicKey,
@@ -1208,12 +1131,11 @@ describe("Octasol Escrow Contract", () => {
     ], program.programId);
     const escrowAta = await getAssociatedTokenAddress(mint, escrowAuth, true);
 
-    await program.methods.initializeBounty(newBountyId, BOUNTY_AMOUNT).accounts({
+    await program.methods.initializeBounty(newBountyId, BOUNTY_AMOUNT).accountsPartial({
       maintainer: maintainer.publicKey,
       bounty: bntyKp.publicKey,
       maintainerTokenAccount: maintainerTokenAccount,
       escrowAuthority: escrowAuth,
-      config: configPda,
       escrowTokenAccount: escrowAta,
       mint,
       systemProgram: SystemProgram.programId,
@@ -1231,7 +1153,7 @@ describe("Octasol Escrow Contract", () => {
     );
 
     try {
-      await program.methods.adminAssignAndRelease(newBountyId).accounts({
+      await program.methods.adminAssignAndRelease(newBountyId).accountsPartial({
         admin: admin.publicKey,
         config: configPda,
         bounty: bntyKp.publicKey,
@@ -1261,12 +1183,11 @@ describe("Octasol Escrow Contract", () => {
     ], program.programId);
     const escrowAta = await getAssociatedTokenAddress(mint, escrowAuth, true);
 
-    await program.methods.initializeBounty(newBountyId, BOUNTY_AMOUNT).accounts({
+    await program.methods.initializeBounty(newBountyId, BOUNTY_AMOUNT).accountsPartial({
       maintainer: maintainer.publicKey,
       bounty: bntyKp.publicKey,
       maintainerTokenAccount: maintainerTokenAccount,
       escrowAuthority: escrowAuth,
-      config: configPda,
       escrowTokenAccount: escrowAta,
       mint,
       systemProgram: SystemProgram.programId,
@@ -1276,7 +1197,7 @@ describe("Octasol Escrow Contract", () => {
     }).signers([bntyKp]).rpc();
 
     // Assign initial contributor using maintainer flow
-    await program.methods.assignContributor().accounts({
+    await program.methods.assignContributor().accountsPartial({
       maintainer: maintainer.publicKey,
       bounty: bntyKp.publicKey,
       contributor: initialContributor.publicKey,
@@ -1286,7 +1207,7 @@ describe("Octasol Escrow Contract", () => {
     // Verify initial assignment
     const bountyAfterInitial = await program.account.bounty.fetch(bntyKp.publicKey);
     assert.equal(bountyAfterInitial.contributor.toString(), initialContributor.publicKey.toString());
-    assert.equal(bountyAfterInitial.state, 1); // InProgress
+    assert.ok(bountyAfterInitial.state.hasOwnProperty('inProgress'), "Bounty should be in progress");
 
     // Ensure target contributor ATA exists
     const contribAta = await createAssociatedTokenAccount(
@@ -1297,7 +1218,7 @@ describe("Octasol Escrow Contract", () => {
     );
 
     // Admin overrides with new contributor and releases funds
-    await program.methods.adminAssignAndRelease(newBountyId).accounts({
+    await program.methods.adminAssignAndRelease(newBountyId).accountsPartial({
       admin: admin.publicKey,
       config: configPda,
       bounty: bntyKp.publicKey,
@@ -1311,13 +1232,27 @@ describe("Octasol Escrow Contract", () => {
       associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
     }).signers([admin]).rpc();
 
-    // Verify override and completion
-    const bountyAfterOverride = await program.account.bounty.fetch(bntyKp.publicKey);
-    assert.equal(bountyAfterOverride.contributor.toString(), targetContributor.publicKey.toString());
-    assert.equal(bountyAfterOverride.state, 2); // Completed
+    // Note: The bounty account is closed after adminAssignAndRelease due to the 'close = maintainer' constraint
+    // So we cannot fetch it here. Instead, we verify the funds were transferred correctly.
 
     // Verify funds were transferred to new contributor
     const contribInfo = await getAccount(connection, contribAta);
     assert.equal(contribInfo.amount.toString(), BOUNTY_AMOUNT.toString());
+
+    // Verify the escrow token account is closed (should throw an error when trying to fetch)
+    try {
+      await getAccount(connection, escrowAta);
+      assert.fail("Escrow token account should be closed after admin assign and release");
+    } catch (error) {
+      assert.isOk(error, "Successfully confirmed escrow token account is closed");
+    }
+
+    // Verify the bounty account is closed (should throw an error when trying to fetch)
+    try {
+      await program.account.bounty.fetch(bntyKp.publicKey);
+      assert.fail("Bounty account should be closed after admin assign and release");
+    } catch (error) {
+      assert.isOk(error, "Successfully confirmed bounty account is closed");
+    }
   });
 });

@@ -10,7 +10,7 @@ pub struct UpdateAdmin<'info> {
         mut,
         seeds = [b"config"],
         bump,
-        has_one = admin, // <-- CRITICAL SECURITY CHECK!
+        has_one = admin, 
     )]
     pub config: Account<'info, ConfigState>,
 }

@@ -12,7 +12,7 @@ use state::*;
 use util::{errors::ContractError, events::*};
 
 
-declare_id!("9fEwdooYgtnUje89t6jTtqnfeeJ1e8oNZm6QP67tSksp");
+declare_id!("tMf5EmV2h6sMJ2QMFU6766ACJpf7NTuamPzCudaNFus");
 
 
 
@@ -113,6 +113,21 @@ pub fn assign_contributor(ctx: Context<AssignContributor>) -> Result<()> {
         }, binding);
 
         let _ = transfer(cpi_ctx, bounty.amount)?;
+
+        // Now, close the escrow token account using a CPI to the token program
+        // The rent will be sent to the maintainer as specified in the context
+        let cpi_ctx = CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info(),
+            CloseAccount {
+                account: ctx.accounts.escrow_token_account.to_account_info(),
+                destination: ctx.accounts.maintainer.to_account_info(),
+                authority: ctx.accounts.escrow_authority.to_account_info(),
+            },
+            binding
+        );
+
+        close_account(cpi_ctx)?;
+
         emit!(BountyCompleted {
             bounty_id,
             contributor: ctx.accounts.contributor.key(),
@@ -236,6 +251,20 @@ pub fn assign_contributor(ctx: Context<AssignContributor>) -> Result<()> {
             signer,
         );
         transfer(cpi_ctx, bounty.amount)?;
+
+        // Now, close the escrow token account using a CPI to the token program
+        // The rent will be sent to the maintainer as specified in the context
+        let cpi_ctx = CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info(),
+            CloseAccount {
+                account: ctx.accounts.escrow_token_account.to_account_info(),
+                destination: ctx.accounts.maintainer.to_account_info(),
+                authority: ctx.accounts.escrow_authority.to_account_info(),
+            },
+            signer
+        );
+
+        close_account(cpi_ctx)?;
 
         // Emit completion event
         emit!(BountyCompleted {

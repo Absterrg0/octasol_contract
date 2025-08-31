@@ -17,7 +17,7 @@ pub struct CancelBounty<'info> {
     
     #[account(
         mut,
-        close = maintainer, // This is correct for your custom bounty account
+        close = maintainer, 
         constraint = bounty.state != crate::state::BountyState::Completed @ crate::util::errors::ContractError::BountyAlreadyCompleted,
         constraint = bounty.state != crate::state::BountyState::Cancelled @ crate::util::errors::ContractError::BountyAlreadyCancelled
     )]
